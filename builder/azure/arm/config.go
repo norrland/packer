@@ -595,6 +595,12 @@ func (c *Config) Prepare(raws ...interface{}) ([]string, error) {
 		return nil, err
 	}
 
+	if c.AzureTags == nil {
+		// Initialize AzureTags to avoid panic crash
+		// when assigning AzureTag
+		c.AzureTags = make(map[string]*string)
+	}
+
 	// copy singular blocks
 	for _, kv := range c.AzureTag {
 		v := kv.Value
