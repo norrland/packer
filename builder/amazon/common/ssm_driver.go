@@ -31,13 +31,17 @@ type SSMDriverConfig struct {
 
 type SSMDriver struct {
 	SSMDriverConfig
-	session       *ssm.StartSessionOutput
-	sessionParams ssm.StartSessionInput
-	pluginCmdFunc func(context.Context) error
+	session         *ssm.StartSessionOutput
+	sessionParams   ssm.StartSessionInput
+	pluginCmdFunc   func(context.Context) error
+	retryConnection chan bool
 }
 
 func NewSSMDriver(config SSMDriverConfig) *SSMDriver {
-	d := SSMDriver{SSMDriverConfig: config}
+	d := SSMDriver{
+		SSMDriverConfig: config,
+		retryConnection: make(chan bool, 1),
+	}
 	return &d
 }
 
@@ -105,7 +109,7 @@ func (d *SSMDriver) openTunnelForSession(ctx context.Context) error {
 	steps to fail if the tunnel is unable to be created. If successful then the user
 	will get more information on the tunnel connection when running in a debug mode.
 	*/
-	go func(ctx context.Context, prefix string) {
+	go func(ctx context.Context, prefix string, d *SSMDriver) {
 		for {
 			select {
 			case <-ctx.Done():
@@ -114,13 +118,14 @@ func (d *SSMDriver) openTunnelForSession(ctx context.Context) error {
 				if output != "" {
 					log.Printf("[ERROR] %s: %s", prefix, output)
 				}
+				d.retryConnection <- true
 			case output := <-stdoutCh:
 				if output != "" {
 					log.Printf("[DEBUG] %s: %s", prefix, output)
 				}
 			}
 		}
-	}(ctx, sessionManagerPluginName)
+	}(ctx, sessionManagerPluginName, d)
 
 	log.Printf("[DEBUG %s] opening session tunnel to instance %q for session %q", sessionManagerPluginName,
 		aws.StringValue(d.sessionParams.Target),

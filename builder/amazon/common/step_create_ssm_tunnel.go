@@ -83,6 +83,21 @@ func (s *StepCreateSSMTunnel) Run(ctx context.Context, state multistep.StateBag)
 		return multistep.ActionHalt
 	}
 
+	go func(ctx context.Context, driver *SSMDriver, input ssm.StartSessionInput) {
+		for {
+			retry := driver.retryConnection
+			select  {
+			case <-ctx.Done():
+				return
+			case <-retry:
+				_, err := driver.StartSession(ctx, input)
+				if err != nil {
+					return
+				}
+			}
+		}
+	}(ctx, s.driver, input)
+
 	ui.Message(fmt.Sprintf("PortForwarding session %q has been started", s.instanceId))
 	state.Put("sessionPort", s.LocalPortNumber)
 	return multistep.ActionContinue
